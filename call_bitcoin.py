@@ -177,13 +177,22 @@ def visualizacion():
 
 
 
+# Bucle infinito para automatización
+while True:
+    try:
+        # Limpiar la pantalla para evitar la acumulación de gráficos anteriores
+        clear_output(wait=True)
 
-# Limpiar la pantalla para evitar la acumulación de gráficos anteriores
-clear_output(wait=True)
+        # Ejecutar las funciones en el orden correcto
+        importar_base_bitcoin()    # Paso 2: Obtener los datos históricos del Bitcoin
+        extraer_tendencias()       # Paso 3: Extraer la tendencia del sitio web
+        limpieza_datos()           # Paso 4: Limpiar y procesar los datos
+        tomar_decisiones()         # Paso 5: Tomar la decisión basada en las reglas del algoritmo
+        visualizacion()            # Paso 6: Mostrar el gráfico actualizado
 
-# Ejecutar las funciones en el orden correcto
-importar_base_bitcoin()    # Obtener los datos históricos del Bitcoin
-extraer_tendencias()       # Extraer la tendencia del sitio web
-limpieza_datos()           # Limpiar y procesar los datos
-tomar_decisiones()         # Tomar la decisión basada en las reglas del algoritmo
-visualizacion()            # Mostrar el gráfico actualizado
+        # Pausa de 5 minutos antes de la siguiente actualización
+        time.sleep(300)
+    
+    except Exception as e:
+        print(f"Error encontrado: {e}")
+        time.sleep(300)  # Esperar 5 minutos antes de reintentar
