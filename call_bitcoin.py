@@ -8,6 +8,10 @@ import re  # Importar la librería de expresiones regulares
 
 import matplotlib.pyplot as plt
 
+
+from IPython.display import clear_output
+import time
+
 # Variables globales
 global df_bitcoin, precio_actual, tendencia, media_bitcoin, algoritmo_decision
 
@@ -31,8 +35,7 @@ def importar_base_bitcoin():
     # Mostrar un resumen de los datos descargados
     print(df_bitcoin.head())
 
-# Llamar a la función para extraer y mostrar los datos
-importar_base_bitcoin()
+
 
 def extraer_tendencias():
     global precio_actual, tendencia
@@ -77,14 +80,10 @@ def extraer_tendencias():
     except requests.exceptions.RequestException as e:
         print(f"Error al realizar la solicitud a la página: {e}")
 
-# Llamada de prueba a la función
-extraer_tendencias()
 
 
 # Llamar a la función para limpiar datos
 
-import pandas as pd
-import matplotlib.pyplot as plt
 
 def limpieza_datos():
     global df_bitcoin, media_bitcoin
@@ -123,4 +122,68 @@ def limpieza_datos():
     print(f"Registros finales después de la limpieza: {df_bitcoin_limpio.shape[0]} registros")
 
 # Ejecutar la función
-limpieza_datos()
+
+
+
+def tomar_decisiones():
+    global precio_actual, media_bitcoin, tendencia, algoritmo_decision
+
+    # Criterio de decisión
+    if precio_actual >= media_bitcoin and tendencia == 'baja':
+        algoritmo_decision = 'Vender'
+    elif precio_actual < media_bitcoin and tendencia == 'alta':
+        algoritmo_decision = 'Comprar'
+    else:
+        algoritmo_decision = ''
+
+    # Imprimir la decisión tomada
+    print(f"Decisión: {algoritmo_decision}")
+
+
+
+# Llamar a la función para lvisualizar 
+
+def visualizacion():
+    global df_bitcoin, media_bitcoin, algoritmo_decision
+    
+    # Agregar la columna 'Promedio' al dataframe df_bitcoin con el valor de media_bitcoin
+    df_bitcoin['Promedio'] = media_bitcoin
+    
+    # Configurar el tamaño del gráfico
+    plt.figure(figsize=(16, 5))
+    
+    # Agregar título al gráfico
+    plt.title('Evolución del precio del Bitcoin y decisión del algoritmo')
+
+    # Dibujar la línea del precio de cierre ('Close')
+    plt.plot(df_bitcoin.index, df_bitcoin['Close'], label='Precio de cierre', color='blue')
+
+    # Dibujar la línea del promedio ('Promedio')
+    plt.plot(df_bitcoin.index, df_bitcoin['Promedio'], label='Promedio', color='red', linestyle='--')
+
+    # Mostrar la decisión en el gráfico con el método annotate()
+    decision_text = f"Decisión: {algoritmo_decision}"
+    plt.annotate(decision_text, xy=(df_bitcoin.index[-1], df_bitcoin['Close'].iloc[-1]),
+                 xytext=(df_bitcoin.index[-30], df_bitcoin['Close'].max()),
+                 arrowprops=dict(facecolor='black', shrink=0.05),
+                 fontsize=12, color='green')
+
+    # Añadir leyenda
+    plt.legend()
+
+    # Mostrar el gráfico
+    plt.show()
+
+
+
+
+
+# Limpiar la pantalla para evitar la acumulación de gráficos anteriores
+clear_output(wait=True)
+
+# Ejecutar las funciones en el orden correcto
+importar_base_bitcoin()    # Obtener los datos históricos del Bitcoin
+extraer_tendencias()       # Extraer la tendencia del sitio web
+limpieza_datos()           # Limpiar y procesar los datos
+tomar_decisiones()         # Tomar la decisión basada en las reglas del algoritmo
+visualizacion()            # Mostrar el gráfico actualizado
