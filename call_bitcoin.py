@@ -1,57 +1,44 @@
 import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta
-
 import requests
 from bs4 import BeautifulSoup
-import re  # Importar la librería de expresiones regulares
-
-import matplotlib.pyplot as plt
-
-
-from IPython.display import clear_output
+import re  # Para expresiones regulares
+import plotly.graph_objects as go
 import time
 
 # Variables globales
 global df_bitcoin, precio_actual, tendencia, media_bitcoin, algoritmo_decision
 
-
-# Definimos la función importar_base_bitcoin
+# Definir la función para importar datos de Bitcoin
 def importar_base_bitcoin():
-    # Definir la variable global para el dataframe
     global df_bitcoin
-    
-    # Obtener la fecha actual y la fecha de hace 7 días
     end_date = datetime.now()
     start_date = end_date - timedelta(days=7)
     
-    # Convertir las fechas a strings en formato 'YYYY-MM-DD'
+    # Convertir fechas a strings en formato 'YYYY-MM-DD'
     start_str = start_date.strftime('%Y-%m-%d')
     end_str = end_date.strftime('%Y-%m-%d')
     
-    # Descargar los datos de Bitcoin desde el rango de fechas
+    # Descargar datos de Bitcoin usando yfinance
     df_bitcoin = yf.download(tickers='BTC-USD', start=start_str, end=end_str, interval='5m')
     
     # Mostrar un resumen de los datos descargados
     print(df_bitcoin.head())
 
-
-
+# Definir la función para extraer tendencias de CoinMarketCap
 def extraer_tendencias():
     global precio_actual, tendencia
     
-    # URL de la página que vamos a hacer scraping
     url = "https://coinmarketcap.com/currencies/bitcoin/"
     
     try:
-        # Realizamos una solicitud a la página web
         page = requests.get(url)
-        page.raise_for_status()  # Verifica que la solicitud fue exitosa
+        page.raise_for_status()
         
-        # Creamos el objeto BeautifulSoup para analizar la página
         soup = BeautifulSoup(page.content, 'html.parser')
         
-        # Extraemos el precio actual del Bitcoin usando la nueva clase y atributo 'data-test'
+        # Extraer el precio actual del Bitcoin
         precio_tag = soup.find("span", {"data-test": "text-cdp-price-display"})
         if precio_tag:
             precio_actual = float(precio_tag.text.replace('$', '').replace(',', ''))
@@ -59,136 +46,93 @@ def extraer_tendencias():
         else:
             print("No se pudo extraer el precio actual del Bitcoin.")
         
-        # Filtrar los párrafos que contienen la variación en porcentaje
+        # Extraer la variación de tendencia en porcentaje
         p_tags = soup.find_all("p")
         for p in p_tags:
-            # Usar una expresión regular para buscar números con el símbolo '%'
             variacion_text = re.search(r"([-+]?\d*\.\d+|\d+)%", p.text)
             if variacion_text:
-                # Extraer el valor de la variación
-                variacion = float(variacion_text.group(0).replace('%', ''))  # Convertimos a float sin el símbolo %
-                
-                # Definir la tendencia según el valor extraído
-                if variacion < 0:
-                    tendencia = 'baja'
-                else:
-                    tendencia = 'alta'
-                
+                variacion = float(variacion_text.group(0).replace('%', ''))
+                tendencia = 'baja' if variacion < 0 else 'alta'
                 print(f"Variación: {variacion}% - Tendencia: {tendencia}")
-                break  # Salimos después de encontrar la primera variación válida
+                break
         
     except requests.exceptions.RequestException as e:
         print(f"Error al realizar la solicitud a la página: {e}")
 
-
-
-# Llamar a la función para limpiar datos
-
-
+# Función para limpiar datos
 def limpieza_datos():
     global df_bitcoin, media_bitcoin
     
-    # Crear una copia de df_bitcoin para realizar la limpieza
     df_bitcoin_limpio = df_bitcoin.copy()
-    
-    # Verificar duplicados en el índice Datetime
     df_bitcoin_limpio = df_bitcoin_limpio[~df_bitcoin_limpio.index.duplicated(keep='first')]
-
-    # Tratar valores nulos en la columna 'Close' usando ffill() sin inplace
-    df_bitcoin_limpio['Close'] = df_bitcoin_limpio['Close'].ffill()  # Llenar con el último valor válido
-
-    # Eliminar registros con 'Volume' <= 0
+    df_bitcoin_limpio['Close'] = df_bitcoin_limpio['Close'].ffill()
     df_bitcoin_limpio = df_bitcoin_limpio[df_bitcoin_limpio['Volume'] > 0]
     
-    # Identificación de outliers utilizando un gráfico de boxplot para la columna 'Close'
-    plt.figure(figsize=(10, 5))
-    plt.boxplot(df_bitcoin_limpio['Close'])
-    plt.title('Detección de outliers en la columna Close')
-    plt.show()
-
-    # Cálculo de cuartiles
+    # Calcular cuartiles y filtrar outliers
     Q1 = df_bitcoin_limpio['Close'].quantile(0.25)
     Q3 = df_bitcoin_limpio['Close'].quantile(0.75)
     IQR = Q3 - Q1
-
-    # Filtrar registros cuyos precios (Close) estén entre el 1er cuartil y el 3er cuartil
     df_bitcoin_limpio = df_bitcoin_limpio[(df_bitcoin_limpio['Close'] >= Q1) & (df_bitcoin_limpio['Close'] <= Q3)]
     
-    # Calcular el precio promedio de 'Close' después de la limpieza
+    # Calcular media del precio
     media_bitcoin = df_bitcoin_limpio['Close'].mean()
-    
-    # Mostrar información final
     print(f"Precio promedio de Bitcoin después de la limpieza: {media_bitcoin:.2f} USD")
-    print(f"Registros finales después de la limpieza: {df_bitcoin_limpio.shape[0]} registros")
 
-# Ejecutar la función
+# Función para calcular SMA (Simple Moving Average)
+def calcular_sma(periodo_corto=10, periodo_largo=50):
+    global df_bitcoin
+    # Calcular las medias móviles
+    df_bitcoin['SMA_corto'] = df_bitcoin['Close'].rolling(window=periodo_corto).mean()
+    df_bitcoin['SMA_largo'] = df_bitcoin['Close'].rolling(window=periodo_largo).mean()
 
+    # Señales de compra/venta basadas en el cruce de SMAs
+    df_bitcoin['Signal'] = 0
+    df_bitcoin['Signal'] = df_bitcoin.apply(lambda row: 1 if row['SMA_corto'] > row['SMA_largo'] else -1, axis=1)
 
+    # Mostrar las últimas filas con las señales
+    print(df_bitcoin[['SMA_corto', 'SMA_largo', 'Signal']].tail())
 
-def tomar_decisiones():
-    global precio_actual, media_bitcoin, tendencia, algoritmo_decision
+# Función para tomar decisiones con SMA
+def tomar_decisiones_con_sma():
+    global df_bitcoin
+    # Reglas de compra/venta basadas en SMA
+    df_bitcoin['Decision'] = df_bitcoin.apply(lambda row: 'Comprar' if row['SMA_corto'] > row['SMA_largo'] 
+                                              else 'Vender', axis=1)
+    print(df_bitcoin[['SMA_corto', 'SMA_largo', 'Decision']].tail())
 
-    # Criterio de decisión
-    if precio_actual >= media_bitcoin and tendencia == 'baja':
-        algoritmo_decision = 'Vender'
-    elif precio_actual < media_bitcoin and tendencia == 'alta':
-        algoritmo_decision = 'Comprar'
-    else:
-        algoritmo_decision = ''
-
-    # Imprimir la decisión tomada
-    print(f"Decisión: {algoritmo_decision}")
-
-
-
-# Llamar a la función para lvisualizar 
-
-def visualizacion():
+# Función para visualización interactiva con Plotly
+def visualizacion_interactiva():
     global df_bitcoin, media_bitcoin, algoritmo_decision
     
-    # Agregar la columna 'Promedio' al dataframe df_bitcoin con el valor de media_bitcoin
     df_bitcoin['Promedio'] = media_bitcoin
     
-    # Configurar el tamaño del gráfico
-    plt.figure(figsize=(16, 5))
+    # Crear una figura para el gráfico
+    fig = go.Figure()
     
-    # Agregar título al gráfico
-    plt.title('Evolución del precio del Bitcoin y decisión del algoritmo')
-
-    # Dibujar la línea del precio de cierre ('Close')
-    plt.plot(df_bitcoin.index, df_bitcoin['Close'], label='Precio de cierre', color='blue')
-
-    # Dibujar la línea del promedio ('Promedio')
-    plt.plot(df_bitcoin.index, df_bitcoin['Promedio'], label='Promedio', color='red', linestyle='--')
-
-    # Mostrar la decisión en el gráfico con el método annotate()
-    decision_text = f"Decisión: {algoritmo_decision}"
-    plt.annotate(decision_text, xy=(df_bitcoin.index[-1], df_bitcoin['Close'].iloc[-1]),
-                 xytext=(df_bitcoin.index[-30], df_bitcoin['Close'].max()),
-                 arrowprops=dict(facecolor='black', shrink=0.05),
-                 fontsize=12, color='green')
-
-    # Añadir leyenda
-    plt.legend()
-
+    # Agregar línea del precio de cierre
+    fig.add_trace(go.Scatter(x=df_bitcoin.index, y=df_bitcoin['Close'], mode='lines', name='Precio de Cierre', line=dict(color='blue')))
+    
+    # Agregar línea del precio promedio
+    fig.add_trace(go.Scatter(x=df_bitcoin.index, y=df_bitcoin['SMA_corto'], mode='lines', name='SMA Corto', line=dict(color='green')))
+    fig.add_trace(go.Scatter(x=df_bitcoin.index, y=df_bitcoin['SMA_largo'], mode='lines', name='SMA Largo', line=dict(color='red', dash='dash')))
+    
+    # Configurar título y etiquetas
+    fig.update_layout(title='Evolución del Precio del Bitcoin con SMA',
+                      xaxis_title='Fecha',
+                      yaxis_title='Precio en USD')
+    
     # Mostrar el gráfico
-    plt.show()
+    fig.show()
 
-
-
-
-# Bucle infinito para automatización
+# Bucle de automatización
 while True:
     try:
-        # Limpiar la pantalla para evitar la acumulación de gráficos anteriores
-        clear_output(wait=True)
-
-        # Ejecutar las funciones en el orden correcto
-        importar_base_bitcoin()    # Paso 2: Obtener los datos históricos del Bitcoin
-        extraer_tendencias()       # Paso 3: Extraer la tendencia del sitio web
-        limpieza_datos()           # Paso 4: Limpiar y procesar los datos
-        tomar_decisiones()         # Paso 5: Tomar la decisión basada en las reglas del algoritmo
-        visualizacion()            # Paso 6: Mostrar el gráfico actualizado
+        importar_base_bitcoin()    # Paso 1: Obtener datos históricos de Bitcoin
+        extraer_tendencias()       # Paso 2: Extraer tendencia del sitio web
+        limpieza_datos()           # Paso 3: Limpiar y procesar los datos
+        calcular_sma()             # Paso 4: Calcular las SMA y generar señales
+        tomar_decisiones_con_sma() # Paso 5: Tomar decisiones basadas en SMA
+        visualizacion_interactiva()# Paso 6: Mostrar el gráfico interactivo con Plotly
 
         # Pausa de 5 minutos antes de la siguiente actualización
         time.sleep(300)
