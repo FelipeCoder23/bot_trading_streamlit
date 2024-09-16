@@ -31,21 +31,45 @@ def extraer_tendencias():
         soup = BeautifulSoup(page.content, 'html.parser')
         
         # Extraer el precio actual del Bitcoin
-        precio_tag = soup.find("span", {"data-test": "text-cdp-price-display"})
+        precio_tag = soup.find("div", class_="priceValue")
         if precio_tag:
-            precio_actual = float(precio_tag.text.replace('$', '').replace(',', ''))
+            precio_text = precio_tag.text.strip()
+            precio_actual = float(precio_text.replace('$', '').replace(',', '').replace('€', ''))
         else:
             precio_actual = None
         
-        # Extraer la variación de tendencia en porcentaje
-        p_tags = soup.find_all("p")
-        for p in p_tags:
-            variacion_text = re.search(r"([-+]?\d*\.\d+|\d+)%", p.text)
-            if variacion_text:
-                variacion = float(variacion_text.group(0).replace('%', ''))
-                tendencia = 'baja' if variacion < 0 else 'alta'
+        # Buscar el elemento <p> que contiene la variación porcentual
+        variacion_tag = soup.find("p", attrs={"data-sensors-click": "true", "data-change": True})
+        if variacion_tag:
+            variacion_text = variacion_tag.get_text(strip=True)
+            # Extraer el valor numérico usando expresiones regulares
+            match = re.search(r"([-+]?\d*\.?\d+)%", variacion_text)
+            if match:
+                variacion = float(match.group(1))
+                # Determinar la tendencia basándose en el atributo 'color'
+                color = variacion_tag.get('color')
+                if color == 'red':
+                    tendencia = 'baja'
+                    variacion = -abs(variacion)  # Asegurar que la variación sea negativa
+                elif color == 'green':
+                    tendencia = 'alta'
+                    variacion = abs(variacion)  # Asegurar que la variación sea positiva
+                else:
+                    # Si no se puede determinar por el color, usamos 'data-change'
+                    data_change = variacion_tag.get('data-change')
+                    if data_change == 'down':
+                        tendencia = 'baja'
+                        variacion = -abs(variacion)
+                    elif data_change == 'up':
+                        tendencia = 'alta'
+                        variacion = abs(variacion)
+                    else:
+                        tendencia = 'alta'  # Asumir 'alta' si no se puede determinar
                 return precio_actual, variacion, tendencia
-        return precio_actual, None, None
+            else:
+                return precio_actual, None, None
+        else:
+            return precio_actual, None, None
     except requests.exceptions.RequestException:
         return None, None, None
 
@@ -85,27 +109,28 @@ def calcular_sma(df_bitcoin, periodo_corto=10, periodo_largo=50):
     
     return df_bitcoin
 
-# Función para decidir si comprar o vender, integrando ambas fuentes de datos
-def tomar_decisiones_con_sma_y_tendencia(df_bitcoin, precio_actual, tendencia):
-    # Crear una columna 'Decision' basada en las SMA y la tendencia
-    df_bitcoin['Decision'] = 'Mantener'  # Valor por defecto
+# Función para tomar decisiones basadas únicamente en las SMA
+def tomar_decisiones_con_solo_sma(df_bitcoin):
+    # Crear una columna 'Decision' inicializada con 'Mantener'
+    df_bitcoin['Decision'] = 'Mantener'
     
     # Obtener las últimas SMA calculadas
     sma_corto_actual = df_bitcoin['SMA_corto'].iloc[-1]
     sma_largo_actual = df_bitcoin['SMA_largo'].iloc[-1]
     
-    # Tomar decisión basada en SMA y tendencia
-    if sma_corto_actual > sma_largo_actual and tendencia == 'alta':
+    # Tomar decisión basada en SMA
+    if sma_corto_actual > sma_largo_actual:
         decision = 'Comprar'
-    elif sma_corto_actual < sma_largo_actual and tendencia == 'baja':
+    elif sma_corto_actual < sma_largo_actual:
         decision = 'Vender'
     else:
         decision = 'Mantener'
     
-    # Asignar la decisión al último registro
-    df_bitcoin.at[df_bitcoin.index[-1], 'Decision'] = decision
+    # Asignar la decisión al último registro usando .loc
+    df_bitcoin.loc[df_bitcoin.index[-1], 'Decision'] = decision
     
     return df_bitcoin, decision
+
 
 # Función para visualizar los datos
 def visualizacion_interactiva(df_bitcoin, media_bitcoin):
@@ -165,8 +190,15 @@ def visualizacion_interactiva(df_bitcoin, media_bitcoin):
         title='Evolución del Precio del Bitcoin con SMA y Señales de Compra/Venta',
         xaxis_title='Fecha',
         yaxis_title='Precio en USD',
-        xaxis_rangeslider_visible=True,
-        template='plotly_dark'  # Establecer tema oscuro
+        xaxis_rangeslider_visible=True
     )
     
     return fig
+
+
+
+
+
+
+
+
