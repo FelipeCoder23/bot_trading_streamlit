@@ -6,17 +6,21 @@ from bs4 import BeautifulSoup
 import re
 import plotly.graph_objects as go
 
-# Función para importar datos de Bitcoin
+# Función para obtener datos históricos de Bitcoin
 def importar_base_bitcoin():
     end_date = datetime.now()
     start_date = end_date - timedelta(days=7)
     
     # Descargar datos de Bitcoin usando yfinance
-    df_bitcoin = yf.download(tickers='BTC-USD', start=start_date.strftime('%Y-%m-%d'), 
-                             end=end_date.strftime('%Y-%m-%d'), interval='5m')
+    df_bitcoin = yf.download(
+        tickers='BTC-USD',
+        start=start_date.strftime('%Y-%m-%d'),
+        end=end_date.strftime('%Y-%m-%d'),
+        interval='5m'
+    )
     return df_bitcoin
 
-# Función para extraer tendencias de CoinMarketCap
+# Función para extraer el precio actual y la tendencia desde CoinMarketCap
 def extraer_tendencias():
     url = "https://coinmarketcap.com/currencies/bitcoin/"
     
@@ -41,63 +45,128 @@ def extraer_tendencias():
                 variacion = float(variacion_text.group(0).replace('%', ''))
                 tendencia = 'baja' if variacion < 0 else 'alta'
                 return precio_actual, variacion, tendencia
+        return precio_actual, None, None
     except requests.exceptions.RequestException:
         return None, None, None
 
-# Función para limpiar datos
+# Función para limpiar y preparar los datos
 def limpieza_datos(df_bitcoin):
+    # Copiar el DataFrame original para no modificarlo directamente
     df_bitcoin_limpio = df_bitcoin.copy()
+    
+    # Eliminar índices duplicados
     df_bitcoin_limpio = df_bitcoin_limpio[~df_bitcoin_limpio.index.duplicated(keep='first')]
     
-    # Rellenar valores nulos en 'Close'
+    # Rellenar valores nulos en la columna 'Close' con el último valor válido
     df_bitcoin_limpio['Close'] = df_bitcoin_limpio['Close'].ffill()
     
-    # Eliminar registros con 'Volume' <= 0
+    # Eliminar filas donde el volumen sea menor o igual a cero
     df_bitcoin_limpio = df_bitcoin_limpio[df_bitcoin_limpio['Volume'] > 0]
     
-    # Calcular cuartiles y eliminar outliers
+    # Calcular los cuartiles para identificar y eliminar valores atípicos
     Q1 = df_bitcoin_limpio['Close'].quantile(0.25)
     Q3 = df_bitcoin_limpio['Close'].quantile(0.75)
     IQR = Q3 - Q1
-    df_bitcoin_limpio = df_bitcoin_limpio[(df_bitcoin_limpio['Close'] >= (Q1 - 1.5 * IQR)) & (df_bitcoin_limpio['Close'] <= (Q3 + 1.5 * IQR))]
+    df_bitcoin_limpio = df_bitcoin_limpio[
+        (df_bitcoin_limpio['Close'] >= (Q1 - 1.5 * IQR)) &
+        (df_bitcoin_limpio['Close'] <= (Q3 + 1.5 * IQR))
+    ]
     
-    # Calcular media del precio
+    # Calcular el precio promedio de Bitcoin
     media_bitcoin = df_bitcoin_limpio['Close'].mean()
     
     return df_bitcoin_limpio, media_bitcoin
-# Función para calcular SMA
+
+# Función para calcular las medias móviles simples (SMA)
 def calcular_sma(df_bitcoin, periodo_corto=10, periodo_largo=50):
+    # Calcular la SMA de corto y largo plazo
     df_bitcoin['SMA_corto'] = df_bitcoin['Close'].rolling(window=periodo_corto).mean()
     df_bitcoin['SMA_largo'] = df_bitcoin['Close'].rolling(window=periodo_largo).mean()
-
-    df_bitcoin['Signal'] = df_bitcoin.apply(lambda row: 1 if row['SMA_corto'] > row['SMA_largo'] else -1, axis=1)
+    
     return df_bitcoin
 
-# Función para tomar decisiones con SMA
-def tomar_decisiones_con_sma(df_bitcoin):
-    df_bitcoin['Decision'] = df_bitcoin.apply(lambda row: 'Comprar' if row['SMA_corto'] > row['SMA_largo'] 
-                                              else 'Vender', axis=1)
-    return df_bitcoin
+# Función para decidir si comprar o vender, integrando ambas fuentes de datos
+def tomar_decisiones_con_sma_y_tendencia(df_bitcoin, precio_actual, tendencia):
+    # Crear una columna 'Decision' basada en las SMA y la tendencia
+    df_bitcoin['Decision'] = 'Mantener'  # Valor por defecto
+    
+    # Obtener las últimas SMA calculadas
+    sma_corto_actual = df_bitcoin['SMA_corto'].iloc[-1]
+    sma_largo_actual = df_bitcoin['SMA_largo'].iloc[-1]
+    
+    # Tomar decisión basada en SMA y tendencia
+    if sma_corto_actual > sma_largo_actual and tendencia == 'alta':
+        decision = 'Comprar'
+    elif sma_corto_actual < sma_largo_actual and tendencia == 'baja':
+        decision = 'Vender'
+    else:
+        decision = 'Mantener'
+    
+    # Asignar la decisión al último registro
+    df_bitcoin.at[df_bitcoin.index[-1], 'Decision'] = decision
+    
+    return df_bitcoin, decision
 
-# Visualización interactiva mejorada
+# Función para visualizar los datos
 def visualizacion_interactiva(df_bitcoin, media_bitcoin):
+    # Agregar una columna con el precio promedio
     df_bitcoin['Promedio'] = media_bitcoin
     
     # Crear una figura para el gráfico
     fig = go.Figure()
     
-    # Agregar línea del precio de cierre
-    fig.add_trace(go.Scatter(x=df_bitcoin.index, y=df_bitcoin['Close'], mode='lines', name='Precio de Cierre', line=dict(color='blue')))
+    # Agregar el precio de cierre
+    fig.add_trace(go.Scatter(
+        x=df_bitcoin.index,
+        y=df_bitcoin['Close'],
+        mode='lines',
+        name='Precio de Cierre',
+        line=dict(color='blue')
+    ))
     
-    # Agregar línea del SMA corto y largo
-    fig.add_trace(go.Scatter(x=df_bitcoin.index, y=df_bitcoin['SMA_corto'], mode='lines', name='SMA Corto', line=dict(color='green')))
-    fig.add_trace(go.Scatter(x=df_bitcoin.index, y=df_bitcoin['SMA_largo'], mode='lines', name='SMA Largo', line=dict(color='red', dash='dash')))
+    # Agregar las medias móviles
+    fig.add_trace(go.Scatter(
+        x=df_bitcoin.index,
+        y=df_bitcoin['SMA_corto'],
+        mode='lines',
+        name='SMA Corto',
+        line=dict(color='green')
+    ))
+    fig.add_trace(go.Scatter(
+        x=df_bitcoin.index,
+        y=df_bitcoin['SMA_largo'],
+        mode='lines',
+        name='SMA Largo',
+        line=dict(color='red', dash='dash')
+    ))
     
-    # Configurar el título y las etiquetas
-    fig.update_layout(title='Evolución del Precio del Bitcoin con SMA',
-                      xaxis_title='Fecha',
-                      yaxis_title='Precio en USD',
-                      xaxis_rangeslider_visible=True)
-
-    # Mostrar el gráfico
+    # Añadir puntos de compra/venta
+    buy_signals = df_bitcoin[df_bitcoin['Decision'] == 'Comprar']
+    sell_signals = df_bitcoin[df_bitcoin['Decision'] == 'Vender']
+    
+    fig.add_trace(go.Scatter(
+        x=buy_signals.index,
+        y=buy_signals['Close'],
+        mode='markers',
+        name='Comprar',
+        marker=dict(color='green', symbol='triangle-up', size=10)
+    ))
+    
+    fig.add_trace(go.Scatter(
+        x=sell_signals.index,
+        y=sell_signals['Close'],
+        mode='markers',
+        name='Vender',
+        marker=dict(color='red', symbol='triangle-down', size=10)
+    ))
+    
+    # Configurar el diseño del gráfico
+    fig.update_layout(
+        title='Evolución del Precio del Bitcoin con SMA y Señales de Compra/Venta',
+        xaxis_title='Fecha',
+        yaxis_title='Precio en USD',
+        xaxis_rangeslider_visible=True,
+        template='plotly_dark'  # Establecer tema oscuro
+    )
+    
     return fig
