@@ -33,7 +33,7 @@ st.dataframe(df_bitcoin.tail())
 # 2. Extraer el precio actual y la tendencia
 st.write("Extrayendo tendencias actuales...")
 precio_actual, variacion, tendencia = call_bitcoin.extraer_tendencias()
-if precio_actual is not None and variacion is not None:
+if precio_actual is not None and variacion is not None and tendencia is not None:
     st.metric(
         label="Precio actual del Bitcoin",
         value=f"${precio_actual:,.2f}",
@@ -45,36 +45,58 @@ else:
 
 # 3. Limpiar los datos de Bitcoin
 st.write("Limpiando datos...")
-df_bitcoin, media_bitcoin = call_bitcoin.limpieza_datos(df_bitcoin)
+df_bitcoin_limpio, media_bitcoin = call_bitcoin.limpieza_datos(df_bitcoin)
 st.write(f"Precio promedio después de la limpieza: **${media_bitcoin:.2f}**")
 
-# 4. Calcular SMA
+# 4. Calcular SMA usando el DataFrame limpio
 st.write("Calculando Medias Móviles Simples (SMA)...")
-df_bitcoin = call_bitcoin.calcular_sma(df_bitcoin, periodo_corto, periodo_largo)
+df_bitcoin_limpio = call_bitcoin.calcular_sma(df_bitcoin_limpio, periodo_corto, periodo_largo)
 st.write("SMA calculadas:")
-st.dataframe(df_bitcoin[['Close', 'SMA_corto', 'SMA_largo']].tail())
+st.dataframe(df_bitcoin_limpio[['Close', 'SMA_corto', 'SMA_largo']].tail())
 
 # 5. Tomar decisiones integrando SMA y tendencia
 st.write("Determinando decisiones de compra/venta...")
-df_bitcoin, decision_final = call_bitcoin.tomar_decisiones_con_sma_y_tendencia(df_bitcoin, precio_actual, tendencia)
-st.write("Decisiones basadas en SMA y tendencia:")
-st.dataframe(df_bitcoin[['Close', 'SMA_corto', 'SMA_largo', 'Decision']].tail())
 
-# 6. Mostrar la decisión final con fundamentación
-sma_corto_actual = df_bitcoin['SMA_corto'].iloc[-1]
-sma_largo_actual = df_bitcoin['SMA_largo'].iloc[-1]
-
-if decision_final == 'Comprar':
-    st.subheader(f"Según estos datos, se toma la decisión de **comprar**.")
-    st.write(f"Esto se debe a que la SMA de corto plazo ({sma_corto_actual:.2f}) es mayor que la SMA de largo plazo ({sma_largo_actual:.2f}) y la tendencia actual es **{tendencia}**.")
-elif decision_final == 'Vender':
-    st.subheader(f"Según estos datos, se toma la decisión de **vender**.")
-    st.write(f"Esto se debe a que la SMA de corto plazo ({sma_corto_actual:.2f}) es menor que la SMA de largo plazo ({sma_largo_actual:.2f}) y la tendencia actual es **{tendencia}**.")
+if tendencia is not None:
+    df_bitcoin_limpio, decision_final = call_bitcoin.tomar_decisiones_con_sma_y_tendencia(df_bitcoin_limpio, precio_actual, tendencia)
+    st.write("Decisiones basadas en SMA y tendencia:")
+    st.dataframe(df_bitcoin_limpio[['Close', 'SMA_corto', 'SMA_largo', 'Decision']].tail())
+    
+    # 6. Mostrar la decisión final con fundamentación
+    sma_corto_actual = df_bitcoin_limpio['SMA_corto'].iloc[-1]
+    sma_largo_actual = df_bitcoin_limpio['SMA_largo'].iloc[-1]
+    
+    if decision_final == 'Comprar':
+        st.subheader(f"Según estos datos, se toma la decisión de **comprar**.")
+        st.write(f"Esto se debe a que la SMA de corto plazo ({sma_corto_actual:.2f}) es mayor que la SMA de largo plazo ({sma_largo_actual:.2f}) y la tendencia actual es **{tendencia}**.")
+    elif decision_final == 'Vender':
+        st.subheader(f"Según estos datos, se toma la decisión de **vender**.")
+        st.write(f"Esto se debe a que la SMA de corto plazo ({sma_corto_actual:.2f}) es menor que la SMA de largo plazo ({sma_largo_actual:.2f}) y la tendencia actual es **{tendencia}**.")
+    else:
+        st.subheader(f"Según estos datos, se recomienda **mantener** la posición.")
+        st.write(f"La SMA de corto plazo ({sma_corto_actual:.2f}) y la SMA de largo plazo ({sma_largo_actual:.2f}) no muestran una señal clara, o la tendencia actual es **{tendencia}**.")
 else:
-    st.subheader(f"Según estos datos, se recomienda **mantener** la posición.")
-    st.write(f"La SMA de corto plazo ({sma_corto_actual:.2f}) y la SMA de largo plazo ({sma_largo_actual:.2f}) no muestran una señal clara, o la tendencia actual es **{tendencia}**.")
+    st.write("No se pudo obtener la tendencia actual. Tomando decisión basada solo en SMA.")
+    # Llamar a una función alternativa que solo use SMA
+    df_bitcoin_limpio, decision_final = call_bitcoin.tomar_decisiones_con_solo_sma(df_bitcoin_limpio)
+    st.write("Decisiones basadas únicamente en SMA:")
+    st.dataframe(df_bitcoin_limpio[['Close', 'SMA_corto', 'SMA_largo', 'Decision']].tail())
 
-# 7. Visualizar el gráfico interactivo
+    # Mostrar la decisión final basada en SMA
+    sma_corto_actual = df_bitcoin_limpio['SMA_corto'].iloc[-1]
+    sma_largo_actual = df_bitcoin_limpio['SMA_largo'].iloc[-1]
+    
+    if decision_final == 'Comprar':
+        st.subheader(f"Según estos datos, se toma la decisión de **comprar**.")
+        st.write(f"Esto se debe a que la SMA de corto plazo ({sma_corto_actual:.2f}) ha cruzado por encima de la SMA de largo plazo ({sma_largo_actual:.2f}).")
+    elif decision_final == 'Vender':
+        st.subheader(f"Según estos datos, se toma la decisión de **vender**.")
+        st.write(f"Esto se debe a que la SMA de corto plazo ({sma_corto_actual:.2f}) ha cruzado por debajo de la SMA de largo plazo ({sma_largo_actual:.2f}).")
+    else:
+        st.subheader(f"Según estos datos, se recomienda **mantener** la posición.")
+        st.write(f"La SMA de corto plazo ({sma_corto_actual:.2f}) y la SMA de largo plazo ({sma_largo_actual:.2f}) no muestran una señal clara.")
+
+# 7. Visualizar el gráfico interactivo usando el DataFrame limpio
 st.write("Visualizando datos...")
-fig = call_bitcoin.visualizacion_interactiva(df_bitcoin, media_bitcoin)
+fig = call_bitcoin.visualizacion_interactiva(df_bitcoin_limpio, media_bitcoin)
 st.plotly_chart(fig)
