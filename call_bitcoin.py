@@ -148,7 +148,7 @@ def visualizacion_interactiva(df_bitcoin, media_bitcoin):
         name='Precio de Cierre',
         line=dict(color='blue')
     ))
-    
+    jupyter
     # Agregar las medias móviles
     fig.add_trace(go.Scatter(
         x=df_bitcoin.index,
