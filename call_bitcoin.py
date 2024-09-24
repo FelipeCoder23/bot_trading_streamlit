@@ -20,58 +20,44 @@ def importar_base_bitcoin():
     )
     return df_bitcoin
 
-# Función para extraer el precio actual y la tendencia desde CoinMarketCap
+# Función para extraer el precio y la tendencia desde CoinMarketCap
 def extraer_tendencias():
-    url = "https://coinmarketcap.com/currencies/bitcoin/"
-    
+    global df_bitcoin, df_bitcoin_limpio, precio_actual, tendencia, media_bitcoin, algoritmo_decision, color
+
+    headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36'}
+    url = 'https://coinmarketcap.com/currencies/bitcoin/'
+
     try:
-        page = requests.get(url)
-        page.raise_for_status()
-        
-        soup = BeautifulSoup(page.content, 'html.parser')
-        
-        # Extraer el precio actual del Bitcoin
-        precio_tag = soup.find("div", class_="priceValue")
+        # Realizar la solicitud con los headers para evitar ser bloqueado
+        respuesta = requests.get(url, headers=headers)
+        respuesta.raise_for_status()
+        s = BeautifulSoup(respuesta.content, 'html.parser')
+
+        # 1. Extraer el precio actual de Bitcoin
+        precio_tag = s.find("span", {"data-test": "text-cdp-price-display"})
         if precio_tag:
-            precio_text = precio_tag.text.strip()
-            precio_actual = float(precio_text.replace('$', '').replace(',', '').replace('€', ''))
+            precio_actual = float(precio_tag.getText().replace('$', '').replace(',', ''))
         else:
             precio_actual = None
-        
-        # Buscar el elemento <p> que contiene la variación porcentual
-        variacion_tag = soup.find("p", attrs={"data-sensors-click": "true", "data-change": True})
-        if variacion_tag:
-            variacion_text = variacion_tag.get_text(strip=True)
-            # Extraer el valor numérico usando expresiones regulares
-            match = re.search(r"([-+]?\d*\.?\d+)%", variacion_text)
-            if match:
-                variacion = float(match.group(1))
-                # Determinar la tendencia basándose en el atributo 'color'
-                color = variacion_tag.get('color')
-                if color == 'red':
-                    tendencia = 'baja'
-                    variacion = -abs(variacion)  # Asegurar que la variación sea negativa
-                elif color == 'green':
-                    tendencia = 'alta'
-                    variacion = abs(variacion)  # Asegurar que la variación sea positiva
-                else:
-                    # Si no se puede determinar por el color, usamos 'data-change'
-                    data_change = variacion_tag.get('data-change')
-                    if data_change == 'down':
-                        tendencia = 'baja'
-                        variacion = -abs(variacion)
-                    elif data_change == 'up':
-                        tendencia = 'alta'
-                        variacion = abs(variacion)
-                    else:
-                        tendencia = 'alta'  # Asumir 'alta' si no se puede determinar
-                return precio_actual, variacion, tendencia
+
+        # 2. Extraer la tendencia del precio (alta o baja)
+        tendencia_tag = s.find("p", {"color": True, "data-change": True})
+        if tendencia_tag:
+            color = tendencia_tag['color']
+            if color == "green":
+                tendencia = 'alta'  # Tendencia alcista
+            elif color == "red":
+                tendencia = 'baja'  # Tendencia bajista
             else:
-                return precio_actual, None, None
+                tendencia = None
         else:
-            return precio_actual, None, None
-    except requests.exceptions.RequestException:
-        return None, None, None
+            tendencia = None
+
+        # Retornar el precio actual y la tendencia
+        return precio_actual, tendencia
+    except requests.exceptions.RequestException as e:
+        print(f"Error al hacer la solicitud: {e}")
+        return None, None
 
 # Función para limpiar y preparar los datos
 def limpieza_datos(df_bitcoin):
@@ -109,27 +95,33 @@ def calcular_sma(df_bitcoin, periodo_corto=10, periodo_largo=50):
     
     return df_bitcoin
 
-# Función para tomar decisiones basadas únicamente en las SMA
-def tomar_decisiones_con_solo_sma(df_bitcoin):
-    # Crear una columna 'Decision' inicializada con 'Mantener'
-    df_bitcoin['Decision'] = 'Mantener'
-    
+# Función para tomar decisiones basadas en SMA y la tendencia
+def tomar_decisiones(df_bitcoin, precio_actual, tendencia, media_bitcoin):
     # Obtener las últimas SMA calculadas
     sma_corto_actual = df_bitcoin['SMA_corto'].iloc[-1]
     sma_largo_actual = df_bitcoin['SMA_largo'].iloc[-1]
-    
-    # Tomar decisión basada en SMA
-    if sma_corto_actual > sma_largo_actual:
+
+    # Algoritmo de decisión basado en SMA y tendencia actuales
+    if (sma_corto_actual > sma_largo_actual) and (tendencia == 'alta'):
         decision = 'Comprar'
-    elif sma_corto_actual < sma_largo_actual:
+        color = '#228b22'  # Verde, señal de compra
+        print(f"Decisión: {decision} - SMA corta > SMA larga y tendencia alcista.")
+
+    elif (sma_corto_actual < sma_largo_actual) and (tendencia == 'baja'):
         decision = 'Vender'
+        color = '#dc143c'  # Rojo, señal de venta
+        print(f"Decisión: {decision} - SMA corta < SMA larga y tendencia bajista.")
+
     else:
         decision = 'Mantener'
-    
+        color = '#000000'  # Negro, señal de mantener
+        print(f"Decisión: {decision} - No hay una señal clara.")
+
     # Asignar la decisión al último registro usando .loc
     df_bitcoin.loc[df_bitcoin.index[-1], 'Decision'] = decision
     
-    return df_bitcoin, decision
+    # Retornar el DataFrame modificado y la decisión tomada
+    return df_bitcoin, decision, color
 
 
 # Función para visualizar los datos
@@ -148,7 +140,7 @@ def visualizacion_interactiva(df_bitcoin, media_bitcoin):
         name='Precio de Cierre',
         line=dict(color='blue')
     ))
-    jupyter
+    
     # Agregar las medias móviles
     fig.add_trace(go.Scatter(
         x=df_bitcoin.index,
