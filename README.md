@@ -13,9 +13,9 @@ Este proyecto tiene como objetivo crear un bot de trading automatizado que anali
 ## 🚀 Configuración del Ambiente
 Asegúrate de tener las siguientes bibliotecas instaladas para ejecutar el proyecto:
 
-\`\`\`bash
-pip install yfinance beautifulsoup4 requests matplotlib seaborn pandas plotly
-\`\`\`
+```bash
+pip install yfinance beautifulsoup4  matplotlib seaborn pandas
+```
 
 ## 📥 Obtención y Tratamiento de Datos
 ### 📂 Importación de Datos
