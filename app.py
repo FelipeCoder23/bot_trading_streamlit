@@ -58,12 +58,12 @@ icon_comprar = "https://cdn-icons-png.flaticon.com/512/2698/2698194.png"
 icon_vender = "https://cdn-icons-png.flaticon.com/512/1828/1828843.png"
 if decision_final == 'Comprar':
     st.image(icon_comprar, width=50)
-    st.success(f"Decisión final: **Comprar** - La SMA de corto plazo ({sma_corto_actual:.2f}) ha cruzado por encima de la SMA de largo plazo ({sma_largo_actual:.2f}) y {tendencia}.")
+    st.success(f"Decisión final: **Comprar** - La SMA de corto plazo ({sma_corto_actual:.2f}) ha cruzado por encima de la SMA de largo plazo ({sma_largo_actual:.2f}) y la tendencia es {tendencia}.")
 elif decision_final == 'Vender':
     st.image(icon_vender, width=50)
-    st.error(f"Decisión final: **Vender** - La SMA de corto plazo ({sma_corto_actual:.2f}) ha cruzado por debajo de la SMA de largo plazo ({sma_largo_actual:.2f}) y {tendencia}.")
+    st.error(f"Decisión final: **Vender** - La SMA de corto plazo ({sma_corto_actual:.2f}) ha cruzado por debajo de la SMA de largo plazo ({sma_largo_actual:.2f}) y la tendencia es {tendencia}.")
 else:
-    st.warning(f"Decisión final: **Mantener** - La SMA de corto plazo ({sma_corto_actual:.2f}) y la SMA de largo plazo ({sma_largo_actual:.2f}) no muestran una señal clara y {tendencia}.")
+    st.warning(f"Decisión final: **Mantener** - La SMA de corto plazo ({sma_corto_actual:.2f}) y la SMA de largo plazo ({sma_largo_actual:.2f}) no muestran una señal clara y la tendencia es {tendencia}.")
 
 # Expander para detalles técnicos adicionales
 with st.expander("Ver detalles técnicos"):
