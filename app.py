@@ -4,6 +4,14 @@ import call_bitcoin  # Importar el archivo con las funciones
 # Configurar la página
 st.set_page_config(page_title='Bot de Trading de Bitcoin', layout='wide', initial_sidebar_state="expanded")
 
+# Inyectar la etiqueta meta para autorefrescar cada 5 minutos
+st.markdown(
+    """
+    <meta http-equiv="refresh" content="300">
+    """,
+    unsafe_allow_html=True,
+)
+
 # Colocar el logo y el título en la misma línea con HTML y CSS
 st.markdown("""
     <div style="display: inline-flex; align-items: center;">
