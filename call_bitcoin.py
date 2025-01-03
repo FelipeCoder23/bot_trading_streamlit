@@ -9,7 +9,8 @@ import plotly.graph_objects as go
 # Función para obtener datos históricos de Bitcoin
 def importar_base_bitcoin():
     end_date = datetime.now()
-    start_date = end_date - timedelta(days=7)
+    # Aumentar el período de datos históricos a 30 días para tener suficientes datos
+    start_date = end_date - timedelta(days=30)
     
     # Descargar datos de Bitcoin usando yfinance
     df_bitcoin = yf.download(
@@ -18,6 +19,11 @@ def importar_base_bitcoin():
         end=end_date.strftime('%Y-%m-%d'),
         interval='5m'
     )
+    
+    # Verificar que tenemos suficientes datos
+    if df_bitcoin.empty:
+        raise ValueError("No se pudieron obtener datos de Bitcoin")
+        
     return df_bitcoin
 
 # Función para extraer el precio y la tendencia desde CoinMarketCap
@@ -89,11 +95,21 @@ def limpieza_datos(df_bitcoin):
 
 # Función para calcular las medias móviles simples (SMA)
 def calcular_sma(df_bitcoin, periodo_corto=10, periodo_largo=50):
-    # Calcular la SMA de corto y largo plazo
-    df_bitcoin['SMA_corto'] = df_bitcoin['Close'].rolling(window=periodo_corto).mean()
-    df_bitcoin['SMA_largo'] = df_bitcoin['Close'].rolling(window=periodo_largo).mean()
+    # Crear una copia del DataFrame para no modificar el original
+    df = df_bitcoin.copy()
     
-    return df_bitcoin
+    # Asegurarse de que 'Close' sea numérico
+    df['Close'] = pd.to_numeric(df['Close'], errors='coerce')
+    
+    # Calcular la SMA de corto y largo plazo
+    df['SMA_corto'] = df['Close'].rolling(window=periodo_corto, min_periods=1).mean()
+    df['SMA_largo'] = df['Close'].rolling(window=periodo_largo, min_periods=1).mean()
+    
+    # Rellenar los valores NaN iniciales con el primer valor válido
+    df['SMA_corto'] = df['SMA_corto'].fillna(method='bfill')
+    df['SMA_largo'] = df['SMA_largo'].fillna(method='bfill')
+    
+    return df
 
 # Función para tomar decisiones basadas en SMA y la tendencia
 def tomar_decisiones(df_bitcoin, precio_actual, tendencia, media_bitcoin):
