@@ -16,7 +16,7 @@ st.markdown(
 st.markdown("""
     <div style="display: inline-flex; align-items: center;">
         <img src="https://upload.wikimedia.org/wikipedia/commons/4/46/Bitcoin.svg" alt="Bitcoin Logo" width="50">
-        <h1 style='color: #f63366; margin-left: 10px;'>Bot de Trading de Bitcoin - Implementación de SMA</h1>
+        <h1 style='color: #f63366; margin-left: 10px;'>Bot de Trading de Bitcoin</h1>
     </div>
 """, unsafe_allow_html=True)
 
