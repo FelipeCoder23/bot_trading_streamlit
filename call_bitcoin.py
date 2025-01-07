@@ -23,6 +23,9 @@ def importar_base_bitcoin():
     # Verificar que tenemos suficientes datos
     if df_bitcoin.empty:
         raise ValueError("No se pudieron obtener datos de Bitcoin")
+    
+    # Aplanar el MultiIndex de las columnas
+    df_bitcoin.columns = [col[0] for col in df_bitcoin.columns]
         
     return df_bitcoin
 
@@ -98,46 +101,51 @@ def calcular_sma(df_bitcoin, periodo_corto=10, periodo_largo=50):
     # Crear una copia del DataFrame para no modificar el original
     df = df_bitcoin.copy()
     
-    # Asegurarse de que 'Close' sea numérico
-    df['Close'] = pd.to_numeric(df['Close'], errors='coerce')
-    
-    # Calcular la SMA de corto y largo plazo
-    df['SMA_corto'] = df['Close'].rolling(window=periodo_corto, min_periods=1).mean()
-    df['SMA_largo'] = df['Close'].rolling(window=periodo_largo, min_periods=1).mean()
-    
-    # Rellenar los valores NaN iniciales con el primer valor válido
-    df['SMA_corto'] = df['SMA_corto'].fillna(method='bfill')
-    df['SMA_largo'] = df['SMA_largo'].fillna(method='bfill')
-    
-    return df
+    try:
+        # Calcular la SMA de corto y largo plazo
+        df['SMA_corto'] = df['Close'].rolling(window=periodo_corto, min_periods=1).mean()
+        df['SMA_largo'] = df['Close'].rolling(window=periodo_largo, min_periods=1).mean()
+        
+        # Rellenar los valores NaN iniciales usando bfill() en lugar de fillna(method='bfill')
+        df['SMA_corto'] = df['SMA_corto'].bfill()
+        df['SMA_largo'] = df['SMA_largo'].bfill()
+        
+        return df
+        
+    except Exception as e:
+        print(f"Error en calcular_sma: {e}")
+        return df_bitcoin
 
 # Función para tomar decisiones basadas en SMA y la tendencia
 def tomar_decisiones(df_bitcoin, precio_actual, tendencia, media_bitcoin):
-    # Obtener las últimas SMA calculadas
-    sma_corto_actual = df_bitcoin['SMA_corto'].iloc[-1]
-    sma_largo_actual = df_bitcoin['SMA_largo'].iloc[-1]
+    try:
+        # Obtener las últimas SMA calculadas
+        sma_corto_actual = df_bitcoin['SMA_corto'].iloc[-1]
+        sma_largo_actual = df_bitcoin['SMA_largo'].iloc[-1]
+        
+        # Inicializar la columna Decision si no existe
+        if 'Decision' not in df_bitcoin.columns:
+            df_bitcoin['Decision'] = 'Mantener'
 
-    # Algoritmo de decisión basado en SMA y tendencia actuales
-    if (sma_corto_actual > sma_largo_actual) and (tendencia == 'alta'):
-        decision = 'Comprar'
-        color = '#228b22'  # Verde, señal de compra
-        print(f"Decisión: {decision} - SMA corta > SMA larga y tendencia alcista.")
-
-    elif (sma_corto_actual < sma_largo_actual) and (tendencia == 'baja'):
-        decision = 'Vender'
-        color = '#dc143c'  # Rojo, señal de venta
-        print(f"Decisión: {decision} - SMA corta < SMA larga y tendencia bajista.")
-
-    else:
-        decision = 'Mantener'
-        color = '#000000'  # Negro, señal de mantener
-        print(f"Decisión: {decision} - No hay una señal clara.")
-
-    # Asignar la decisión al último registro usando .loc
-    df_bitcoin.loc[df_bitcoin.index[-1], 'Decision'] = decision
-    
-    # Retornar el DataFrame modificado y la decisión tomada
-    return df_bitcoin, decision, color
+        # Algoritmo de decisión basado en SMA y tendencia actuales
+        if (sma_corto_actual > sma_largo_actual) and (tendencia == 'alta'):
+            decision = 'Comprar'
+            color = '#228b22'
+        elif (sma_corto_actual < sma_largo_actual) and (tendencia == 'baja'):
+            decision = 'Vender'
+            color = '#dc143c'
+        else:
+            decision = 'Mantener'
+            color = '#000000'
+        
+        # Asignar la decisión al último registro
+        df_bitcoin.loc[df_bitcoin.index[-1], 'Decision'] = decision
+        
+        return df_bitcoin, decision, color
+        
+    except Exception as e:
+        print(f"Error en tomar_decisiones: {e}")
+        return df_bitcoin, 'Mantener', '#000000'
 
 
 # Función para visualizar los datos
